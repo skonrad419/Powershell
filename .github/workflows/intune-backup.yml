@@ -1,0 +1,86 @@
+# .github/workflows/intune-backup.yml
+
+name: 'Intune Backup'
+
+# This section defines the triggers for the workflow.
+on:
+  # Allows you to run this workflow manually from the Actions tab on GitHub.
+  workflow_dispatch:
+
+  # This is the scheduled trigger, equivalent to your Azure DevOps schedule.
+  schedule:
+    # Runs every day at 2:00 AM UTC. The format is the same as in Azure DevOps.
+    - cron: '0 2 * * *'
+
+# A workflow is composed of one or more jobs.
+jobs:
+  # We define a single job named 'backup-intune'.
+  backup-intune:
+    # The job will run on the latest available Windows runner.
+    runs-on: windows-latest
+    
+    # This is crucial: We grant the built-in GITHUB_TOKEN permission to write 
+    # to the repository. This allows the workflow to push the backup files.
+    permissions:
+      contents: write
+
+    # Steps are the sequence of tasks executed in the job.
+    steps:
+      # Step 1: Check out your repository's code.
+      # This is equivalent to 'checkout: self' in Azure DevOps.
+      - name: 'Checkout repository'
+        uses: actions/checkout@v4
+
+      # Step 2: Export the main Intune Configuration.
+      # This runs your PowerShell script using the secrets you will configure.
+      - name: 'Export Intune Configuration'
+        shell: pwsh
+        run: |
+          ./Module/Start-IntuneManagement.ps1 `
+            -Silent `
+            -SilentBatchFile "./Module/BulkExport.json" `
+            -TenantId "${{ secrets.TENANT_ID }}" `
+            -AppId "${{ secrets.APP_ID }}" `
+            -Secret "${{ secrets.INTUNE_SECRET }}"
+
+      # Step 3: Create the Documentation directory if it doesn't exist.
+      - name: 'Create Documentation Directory'
+        shell: pwsh
+        run: |
+          New-Item -Path "./Documentation" -ItemType Directory -Force
+          echo "Documentation directory created or already exists."
+
+      # Step 4: Export the Intune Documentation.
+      - name: 'Export Intune Documentation'
+        shell: pwsh
+        run: |
+          ./Module/Start-IntuneManagement.ps1 `
+            -Silent `
+            -SilentBatchFile "./Module/BulkDocumentation.json" `
+            -TenantId "${{ secrets.TENANT_ID }}" `
+            -AppId "${{ secrets.APP_ID }}" `
+            -Secret "${{ secrets.INTUNE_SECRET }}"
+            
+      # Step 5: Commit and push any changes back to the repository.
+      # This replaces the final 'bash@3' task from your original pipeline.
+      - name: 'Commit and Push Changes'
+        shell: bash
+        run: |
+          # Configure Git with a generic user for the commit
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+
+          # Add all new or modified files to the staging area
+          git add .
+
+          # Check if there are any staged changes. If not, the script exits.
+          if [[ -z $(git status --porcelain) ]]; then
+            echo "No changes to Intune configuration detected. Nothing to commit."
+          else
+            echo "Changes detected. Committing and pushing..."
+            # Commit the changes. '[skip ci]' prevents the commit from re-triggering workflows.
+            git commit -m "Automated Intune configuration backup" -m "[skip ci]"
+            # Push the changes to the default branch (e.g., main)
+            git push
+            echo "Backup successfully pushed to the repository."
+          fi
