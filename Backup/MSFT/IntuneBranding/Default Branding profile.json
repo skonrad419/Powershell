@@ -1,0 +1,73 @@
+{
+  "@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/intuneBrandingProfiles(assignments())/$entity",
+  "@odata.type": "#microsoft.graph.intuneBrandingProfile",
+  "@odata.id": "deviceManagement/intuneBrandingProfiles('c3a59481-1bf2-46ce-94b3-66eec07a8d60')",
+  "@odata.editLink": "deviceManagement/intuneBrandingProfiles('c3a59481-1bf2-46ce-94b3-66eec07a8d60')",
+  "id": "c3a59481-1bf2-46ce-94b3-66eec07a8d60",
+  "profileName": "Default Branding profile.",
+  "profileDescription": null,
+  "isDefaultProfile": true,
+  "createdDateTime@odata.type": "#DateTimeOffset",
+  "createdDateTime": "0001-01-01T00:00:00Z",
+  "lastModifiedDateTime@odata.type": "#DateTimeOffset",
+  "lastModifiedDateTime": "0001-01-01T00:00:00Z",
+  "displayName": null,
+  "showLogo": false,
+  "showDisplayNameNextToLogo": true,
+  "themeColorLogo": null,
+  "lightBackgroundLogo": null,
+  "landingPageCustomizedImage": null,
+  "contactITName": null,
+  "contactITPhoneNumber": null,
+  "contactITEmailAddress": null,
+  "contactITNotes": null,
+  "onlineSupportSiteUrl": null,
+  "onlineSupportSiteName": null,
+  "privacyUrl": null,
+  "customPrivacyMessage": null,
+  "customCanSeePrivacyMessage": null,
+  "customCantSeePrivacyMessage": null,
+  "isRemoveDeviceDisabled": false,
+  "isFactoryResetDisabled": false,
+  "disableDeviceCategorySelection": false,
+  "showAzureADEnterpriseApps": false,
+  "showOfficeWebApps": false,
+  "showConfigurationManagerApps": true,
+  "sendDeviceOwnershipChangePushNotification": true,
+  "enrollmentAvailability@odata.type": "#microsoft.graph.enrollmentAvailabilityOptions",
+  "enrollmentAvailability": "availableWithPrompts",
+  "disableClientTelemetry": false,
+  "roleScopeTagIds@odata.type": "#Collection(String)",
+  "roleScopeTagIds": [
+    "0"
+  ],
+  "themeColor": {
+    "@odata.type": "#microsoft.graph.rgbColor",
+    "r@odata.type": "#Byte",
+    "r": 0,
+    "g@odata.type": "#Byte",
+    "g": 114,
+    "b@odata.type": "#Byte",
+    "b": 198
+  },
+  "companyPortalBlockedActions@odata.type": "#Collection(microsoft.graph.companyPortalBlockedAction)",
+  "companyPortalBlockedActions": [
+    {
+      "@odata.type": "#microsoft.graph.companyPortalBlockedAction",
+      "platform@odata.type": "#microsoft.graph.devicePlatformType",
+      "platform": "windows10AndLater",
+      "ownerType@odata.type": "#microsoft.graph.ownerType",
+      "ownerType": "company",
+      "action@odata.type": "#microsoft.graph.companyPortalAction",
+      "action": "remove"
+    }
+  ],
+  "assignments@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/intuneBrandingProfiles('c3a59481-1bf2-46ce-94b3-66eec07a8d60')/assignments",
+  "assignments@odata.associationLink": "https://graph.microsoft.com/beta/deviceManagement/intuneBrandingProfiles('c3a59481-1bf2-46ce-94b3-66eec07a8d60')/assignments/$ref",
+  "assignments@odata.navigationLink": "https://graph.microsoft.com/beta/deviceManagement/intuneBrandingProfiles('c3a59481-1bf2-46ce-94b3-66eec07a8d60')/assignments",
+  "assignments": [],
+  "#microsoft.graph.assign": {
+    "title": "microsoft.graph.assign",
+    "target": "https://graph.microsoft.com/beta/deviceManagement/intuneBrandingProfiles('c3a59481-1bf2-46ce-94b3-66eec07a8d60')/microsoft.graph.assign"
+  }
+}

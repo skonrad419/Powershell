@@ -1,0 +1,48 @@
+{
+  "@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/deviceEnrollmentConfigurations(assignments())/$entity",
+  "@odata.type": "#microsoft.graph.deviceEnrollmentLimitConfiguration",
+  "@odata.id": "deviceManagement/deviceEnrollmentConfigurations('91925e9e-a3f6-41a9-a929-1ed62f894b83_DefaultLimit')",
+  "@odata.editLink": "deviceManagement/deviceEnrollmentConfigurations('91925e9e-a3f6-41a9-a929-1ed62f894b83_DefaultLimit')/microsoft.graph.deviceEnrollmentLimitConfiguration",
+  "id": "91925e9e-a3f6-41a9-a929-1ed62f894b83_DefaultLimit",
+  "displayName": "All users and all devices",
+  "description": "This is the default Device Limit Restriction applied with the lowest priority to all users regardless of group membership.",
+  "priority": 0,
+  "createdDateTime@odata.type": "#DateTimeOffset",
+  "createdDateTime": "0001-01-01T00:00:00Z",
+  "lastModifiedDateTime@odata.type": "#DateTimeOffset",
+  "lastModifiedDateTime": "2025-07-04T13:13:21Z",
+  "version": 0,
+  "roleScopeTagIds@odata.type": "#Collection(String)",
+  "roleScopeTagIds": [],
+  "deviceEnrollmentConfigurationType@odata.type": "#microsoft.graph.deviceEnrollmentConfigurationType",
+  "deviceEnrollmentConfigurationType": "limit",
+  "limit": 5,
+  "assignments@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/deviceEnrollmentConfigurations('91925e9e-a3f6-41a9-a929-1ed62f894b83_DefaultLimit')/microsoft.graph.deviceEnrollmentLimitConfiguration/assignments",
+  "assignments@odata.associationLink": "https://graph.microsoft.com/beta/deviceManagement/deviceEnrollmentConfigurations('91925e9e-a3f6-41a9-a929-1ed62f894b83_DefaultLimit')/microsoft.graph.deviceEnrollmentLimitConfiguration/assignments/$ref",
+  "assignments@odata.navigationLink": "https://graph.microsoft.com/beta/deviceManagement/deviceEnrollmentConfigurations('91925e9e-a3f6-41a9-a929-1ed62f894b83_DefaultLimit')/microsoft.graph.deviceEnrollmentLimitConfiguration/assignments",
+  "assignments": [
+    {
+      "@odata.type": "#microsoft.graph.enrollmentConfigurationAssignment",
+      "@odata.id": "deviceManagement/deviceEnrollmentConfigurations('91925e9e-a3f6-41a9-a929-1ed62f894b83_DefaultLimit')/assignments('91925e9e-a3f6-41a9-a929-1ed62f894b83_DefaultLimit')",
+      "@odata.editLink": "deviceManagement/deviceEnrollmentConfigurations('91925e9e-a3f6-41a9-a929-1ed62f894b83_DefaultLimit')/assignments('91925e9e-a3f6-41a9-a929-1ed62f894b83_DefaultLimit')",
+      "id": "91925e9e-a3f6-41a9-a929-1ed62f894b83_DefaultLimit",
+      "source@odata.type": "#microsoft.graph.deviceAndAppManagementAssignmentSource",
+      "source": "direct",
+      "sourceId": null,
+      "target": {
+        "@odata.type": "#microsoft.graph.allDevicesAssignmentTarget",
+        "deviceAndAppManagementAssignmentFilterId": null,
+        "deviceAndAppManagementAssignmentFilterType@odata.type": "#microsoft.graph.deviceAndAppManagementAssignmentFilterType",
+        "deviceAndAppManagementAssignmentFilterType": "none"
+      }
+    }
+  ],
+  "#microsoft.graph.assign": {
+    "title": "microsoft.graph.assign",
+    "target": "https://graph.microsoft.com/beta/deviceManagement/deviceEnrollmentConfigurations('91925e9e-a3f6-41a9-a929-1ed62f894b83_DefaultLimit')/microsoft.graph.deviceEnrollmentConfiguration/microsoft.graph.assign"
+  },
+  "#microsoft.graph.setPriority": {
+    "title": "microsoft.graph.setPriority",
+    "target": "https://graph.microsoft.com/beta/deviceManagement/deviceEnrollmentConfigurations('91925e9e-a3f6-41a9-a929-1ed62f894b83_DefaultLimit')/microsoft.graph.deviceEnrollmentConfiguration/microsoft.graph.setPriority"
+  }
+}
