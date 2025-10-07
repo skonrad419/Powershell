@@ -1,0 +1,347 @@
+# .github/workflows/intunecd-backup.yml
+
+name: 'IntuneCD Backup'
+
+# Define triggers for the workflow
+on:
+  workflow_dispatch:
+  schedule:
+    # Runs at 14:00 UTC every day
+    - cron: '0 14 * * *'
+
+# Define environment variables available to all jobs
+env:
+  BACKUP_FOLDER: 'prod-backup'
+  TENANT_NAME: '40k63h.onmicrosoft.com' # From your original pipeline variables
+
+# Set default permissions for the GITHUB_TOKEN
+# id-token: write is required for OIDC authentication with Azure
+# contents: write is required for committing and pushing to the repo
+permissions:
+  id-token: write
+  contents: write
+
+jobs:
+  #================================================
+  # JOB 1: Backup Intune and commit changes
+  #================================================
+  backup:
+    name: 'Backup & Commit Intune Config'
+    runs-on: ubuntu-latest
+    
+    # Define job outputs that downstream jobs can use
+    outputs:
+      change_detected: ${{ steps.commit-step.outputs.change_detected }}
+      commit_date: ${{ steps.commit-step.outputs.commit_date }}
+      modification_author: ${{ steps.commit-step.outputs.modification_author }}
+
+    steps:
+      - name: 'Checkout repository'
+        uses: actions/checkout@v4
+        with:
+          # Fetch all history for all branches and tags. The script needs git history.
+          fetch-depth: 0
+
+      - name: 'Setup Python and Install IntuneCD'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - run: pip install IntuneCD
+
+      - name: 'Login to Azure via OIDC'
+        uses: azure/login@v1
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: 'Get Microsoft Graph Access Token'
+        id: get-token
+        uses: azure/powershell@v1
+        with:
+          inlineScript: |
+            $token = Get-AzAccessToken -ResourceTypeName MSGraph
+            Add-Content -Path $env:GITHUB_ENV -Value "GRAPH_TOKEN=$($token.Token)"
+          azPSVersion: "latest"
+
+      - name: 'Remove existing backup directory'
+        run: rm -rf ./${{ env.BACKUP_FOLDER }}
+
+      - name: 'Run IntuneCD Backup'
+        id: intunecd-backup
+        run: |
+          BACKUP_START=$(date +%Y.%m.%d:%H.%M.%S)
+          echo "BACKUP_START=$BACKUP_START" >> $GITHUB_ENV
+          
+          IntuneCD-startbackup \
+            --token "${{ env.GRAPH_TOKEN }}" \
+            --mode=1 \
+            --output=json \
+            --path="./${{ env.BACKUP_FOLDER }}" \
+            --exclude CompliancePartnerHeartbeat ManagedGooglePlay VPPusedLicenseCount \
+            --append-id \
+            --ignore-omasettings
+
+      - name: 'Find Authors, Commit, and Push'
+        id: commit-step
+        shell: pwsh
+        run: |
+          # For better maintainability, you could move this script to a .ps1 file
+          # in your repository and call it here, e.g., ./scripts/commit-backup.ps1
+          
+          $root = "${{ github.workspace }}"
+          Set-Location $root
+
+          # configure GIT defaults
+          git config --global user.name 'unknown'
+          git config --global user.email 'unknown@unknown.com'
+          git config --global core.longpaths true
+          git config --global core.quotepath off
+          git config --global core.eol lf
+          git config --global core.autocrlf false
+
+          # get changed config files
+          $untrackedFile = git ls-files --others --exclude-standard --full-name
+          $trackedFile = git ls-files --modified --full-name
+          $changedFile = $untrackedFile, $trackedFile | Where-Object { $_ }
+
+          if ($changedFile) {
+              echo "CHANGE_DETECTED=1" >> $GITHUB_OUTPUT
+
+              # install required Graph modules
+              if (!(Get-Module "Microsoft.Graph.DeviceManagement.Administration" -ListAvailable)) {
+                Install-Module Microsoft.Graph.DeviceManagement.Administration -AllowClobber -Force -AcceptLicense -Scope CurrentUser
+              }
+
+              #region authenticate to Graph API
+              Write-Host "Authenticating to Graph API"
+              $secureToken = ConvertTo-SecureString -String $env:GRAPH_TOKEN -AsPlainText -Force
+              Connect-MgGraph -AccessToken $secureToken -NoWelcome
+              #endregion authenticate to Graph API
+
+              #region helper functions
+              function _startProcess {
+                  [CmdletBinding()]
+                  param(
+                      [string] $filePath = '',
+                      [string] $argumentList = '',
+                      [string] $workingDirectory = (Get-Location),
+                      [switch] $dontWait,
+                      [switch] $outputErr2Std
+                  )
+                  $p = New-Object System.Diagnostics.Process
+                  $p.StartInfo.UseShellExecute = $false
+                  $p.StartInfo.RedirectStandardOutput = $true
+                  $p.StartInfo.RedirectStandardError = $true
+                  $p.StartInfo.WorkingDirectory = $workingDirectory
+                  $p.StartInfo.FileName = $filePath
+                  $p.StartInfo.Arguments = $argumentList
+                  [void]$p.Start()
+                  if (!$dontWait) {
+                      $p.WaitForExit()
+                  }
+                  $result = $p.StandardOutput.ReadToEnd()
+                  if ($result) { $result }
+                  if ($outputErr2Std) {
+                      $p.StandardError.ReadToEnd()
+                  } else {
+                      if ($err = $p.StandardError.ReadToEnd()) {
+                          Write-Error $err
+                      }
+                  }
+              }
+              function _getResourceId {
+                  [CmdletBinding()]
+                  param([string] $filePath)
+                  $fileName = [System.IO.Path]::GetFileNameWithoutExtension($filePath)
+                  if ($filePath -like "*Device Configurations/mobileconfig/*") {
+                      $parentFolderPath = Split-Path (Split-Path $filePath -Parent) -Parent
+                      $fileName = Get-ChildItem $parentFolderPath -File | Where-Object {
+                          (ConvertFrom-Json -InputObject (Get-Content $_.FullName -Raw)).payloadFileName -eq [System.IO.Path]::GetFileName($filePath)
+                      } | select -expand BaseName
+                      if (!$fileName) {
+                          Write-Warning "Unable to find 'parent' config file for $filePath"
+                          return
+                      }
+                  } elseif ($filePath -like "*/Managed Google Play/*") {
+                      return ($modificationEvent | Where-Object { $_.Category -eq 'Enrollment' -and $_.ActivityType -eq "Patch AndroidForWorkSettings" }).Resources.ResourceId
+                  }
+                  $delimiter = "__"
+                  if ($fileName -like "*$delimiter*") {
+                      $resourceId = ($fileName -split $delimiter)[-1]
+                      $resourceId = $resourceId -replace "^_*"
+                  } else {
+                      $resourceId = $null
+                  }
+                  return $resourceId
+              }
+              #endregion helper functions
+
+              # get date of the last backup commit
+              $gitCommitDepth = 30
+              git fetch --depth=$gitCommitDepth
+              $commitList = _startProcess git "--no-pager log --no-show-signature -$gitCommitDepth --format=%s%%%%%%%cI" -outputErr2Std -dontWait
+              $lastCommitDate = $commitList -split "`n" | Where-Object {$_} | ForEach-Object {
+                  $commitName, $commitDate = $_ -split "%%%"
+                  if ($commitName -match "^\d{4}\.\d{2}\.\d{2}_\d{2}\.\d{2} -- ") {
+                      $commitDate
+                  }
+              }
+              if ($lastCommitDate) {
+                  $lastCommitDate = Get-Date @($lastCommitDate)[0]
+              } else {
+                  Write-Warning "Unable to obtain date of the last backup. ALL Intune audit events will be gathered."
+              }
+
+              $modificationData = New-Object System.Collections.ArrayList
+
+              #region get all Intune audit events since the last commit
+              $filter = "activityResult eq 'Success'", "ActivityOperationType ne 'Get'"
+              if ($lastCommitDate) {
+                  $lastCommitDate = $lastCommitDate.ToUniversalTime()
+                  $filterDateTimeFrom = Get-Date -Date $lastCommitDate -Format "yyyy-MM-ddTHH:mm:ss"
+                  $filter += "ActivityDateTime ge $filterDateTimeFrom`Z"
+              }
+              $backupStart = [DateTime]::ParseExact($env:BACKUP_START, 'yyyy.MM.dd:HH.mm.ss', $null)
+              $backupStart = $backupStart.ToUniversalTime()
+              $filterDateTimeTo = Get-Date -Date $backupStart -Format "yyyy-MM-ddTHH:mm:ss"
+              $filter += "ActivityDateTime le $filterDateTimeTo`Z"
+              $eventFilter = $filter -join " and "
+              "`nGetting Intune event logs"
+              "`t- from: '$lastCommitDate' (UTC) to: '$backupStart' (UTC)"
+              "`t- filter: $eventFilter"
+              $modificationEvent = Get-MgDeviceManagementAuditEvent -Filter $eventFilter -All
+              #endregion
+
+              "`nProcessing changed files"
+              foreach ($file in $changedFile) {
+                  $resourceId = _getResourceId $file
+                  if ($resourceId) {
+                      "`t- $resourceId ($file)"
+                      $resourceModificationEvent = $modificationEvent | Where-Object { $_.Resources.ResourceId -eq $resourceId }
+                      $modificationAuthorUPN = @()
+                      $resourceModificationEvent.Actor | ForEach-Object {
+                          if ($_.UserPrincipalName) { $modificationAuthorUPN += $_.UserPrincipalName }
+                          elseif ($_.ApplicationDisplayName) { $modificationAuthorUPN += ($_.ApplicationDisplayName + " (SP)") }
+                      }
+                      $modificationAuthorUPN = $modificationAuthorUPN | select -Unique | Sort-Object
+                  } else {
+                      $modificationAuthorUPN = $null
+                  }
+                  if (!$modificationAuthorUPN) {
+                      "`t`t- unable to find out who made the change"
+                      $modificationAuthorUPN = 'unknown@unknown.com'
+                  }
+                  $null = $modificationData.Add([PSCustomObject]@{
+                      resourceId = $resourceId; file = (Join-Path $root $file); modificationAuthorUPN = $modificationAuthorUPN
+                  })
+              }
+
+              #region commit changes
+              "`nCommit changes"
+              $modificationData | Group-Object { $_.modificationAuthorUPN -join '&'} | ForEach-Object {
+                  $modificationAuthorUPN = $_.Group.ModificationAuthorUPN | Select-Object -Unique
+                  $modificationAuthorName = $modificationAuthorUPN | ForEach-Object { $_.split('@')[0] }
+                  $_.Group.File | ForEach-Object {
+                      "`t- Adding $_"
+                      $gitResult = _startProcess git -ArgumentList "add `"$($_)`"" -dontWait -outputErr2Std
+                      if ($gitResult -match "^fatal:") { throw $gitResult }
+                  }
+                  "`t- Setting commit author(s): $($modificationAuthorName -join ', ')"
+                  git config user.name ($modificationAuthorName -join ', ')
+                  git config user.email ($modificationAuthorUPN -join ', ')
+                  $DATEF = "$(Get-Date $backupStart -f yyyy.MM.dd_HH.mm)"
+                  $commitName = "$DATEF -- $($modificationAuthorName -join ', ')"
+                  "`t- Creating commit '$commitName'"
+                  $null = _startProcess git -ArgumentList "commit -m `"$commitName`"" -dontWait
+                  $unpushedCommit = _startProcess git -ArgumentList "cherry -v origin/main"
+                  if ([string]::IsNullOrEmpty($unpushedCommit)) {
+                      Write-Warning "Nothing to commit?! This shouldn't happen."
+                      echo "CHANGE_DETECTED=0" >> $GITHUB_OUTPUT
+                  } else {
+                      "`t`t- Commit was created"
+                      echo "COMMIT_DATE=$DATEF" >> $GITHUB_OUTPUT
+                      $authors = ($modificationData.modificationAuthorUPN | Select-Object -Unique | Sort-Object) -join ', '
+                      echo "MODIFICATION_AUTHOR=$authors" >> $GITHUB_OUTPUT
+                  }
+              }
+              #endregion
+
+              "`nPush changes to upstream"
+              $result = _startProcess git -argumentList "push origin HEAD:main" -dontWait -outputErr2Std
+          } else {
+              "No change detected"
+              echo "CHANGE_DETECTED=0" >> $GITHUB_OUTPUT
+          }
+        env:
+          # Pass the backup start time and graph token into the script's environment
+          BACKUP_START: ${{ env.BACKUP_START }}
+          GRAPH_TOKEN: ${{ env.GRAPH_TOKEN }}
+
+      - name: 'Generate and Commit Documentation'
+        # This step runs only if the previous step detected changes
+        if: steps.commit-step.outputs.change_detected == '1'
+        run: |
+          INTRO="Intune backup and documentation generated at ${{ github.server_url }}/${{ github.repository }} <img align=\"right\" width=\"96\" height=\"96\" src=\"./logo.png\">"
+          IntuneCD-startdocumentation \
+              --path="./${{ env.BACKUP_FOLDER }}" \
+              --outpath="./prod-as-built.md" \
+              --tenantname="${{ env.TENANT_NAME }}" \
+              --intro="$INTRO"
+
+          # Commit and push the documentation
+          git config user.name '${{ secrets.USER_NAME }}'
+          git config user.email '${{ secrets.USER_EMAIL }}'
+          git add --all
+          git commit -m "docs: Generate Intune config as-built $(date +%Y.%m.%d)"
+          git pull origin main --rebase
+          git push
+
+  #================================================
+  # JOB 2: Tag the repository if changes were made
+  #================================================
+  tag:
+    name: 'Tag Repo'
+    runs-on: ubuntu-latest
+    needs: backup # This job depends on the 'backup' job
+    if: needs.backup.outputs.change_detected == '1' # It only runs if changes were detected
+    steps:
+      - name: 'Checkout repository'
+        uses: actions/checkout@v4
+      
+      - name: 'Configure Git'
+        run: |
+          git config user.name '${{ secrets.USER_NAME }}'
+          git config user.email '${{ secrets.USER_EMAIL }}'
+
+      - name: 'Create and Push Git Tag'
+        run: |
+          TAG_NAME="${{ needs.backup.outputs.commit_date }}"
+          TAG_MESSAGE="$TAG_NAME -- Intune configuration snapshot (changes by: ${{ needs.backup.outputs.modification_author }})"
+          echo "Creating tag: $TAG_NAME"
+          git tag -a "$TAG_NAME" -m "$TAG_MESSAGE"
+          git push origin "$TAG_NAME"
+
+  #================================================================
+  # JOB 3: Publish artifacts (steps are commented out as in original)
+  #================================================================
+  publish:
+    name: 'Publish As-Built Artifacts'
+    runs-on: ubuntu-latest
+    needs: [backup, tag]
+    if: needs.backup.outputs.change_detected == '1'
+    steps:
+      - name: 'Checkout repository'
+        uses: actions/checkout@v4
+      
+      # - name: 'Install md-to-pdf'
+      #   run: npm install --location=global md-to-pdf
+
+      # - name: 'Convert markdown to HTML'
+      #   run: cat ./prod-as-built.md | md-to-pdf --config-file ./md2pdf/htmlconfig.json --as-html > ./prod-as-built.html
+      
+      # - name: 'Upload HTML Artifact'
+      #   uses: actions/upload-artifact@v4
+      #   with:
+      #     name: prod-as-built.html
+      #     path: ./prod-as-built.html
