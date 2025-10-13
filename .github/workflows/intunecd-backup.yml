@@ -57,12 +57,9 @@ jobs:
 
       - name: 'Get Microsoft Graph Access Token'
         id: get-token
-        uses: azure/powershell@v2
-        with:
-          inlineScript: |
-            $token = Get-AzAccessToken -ResourceTypeName MSGraph
-            Add-Content -Path $env:GITHUB_ENV -Value "GRAPH_TOKEN=$($token.Token)"
-          azPSVersion: "latest"
+        run: |
+          TOKEN=$(az account get-access-token --resource-type ms-graph --query accessToken -o tsv)
+          echo "GRAPH_TOKEN=$TOKEN" >> $GITHUB_ENV
 
       - name: 'Remove existing backup directory'
         run: rm -rf ./${{ env.BACKUP_FOLDER }}
