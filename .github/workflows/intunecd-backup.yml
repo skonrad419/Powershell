@@ -331,14 +331,14 @@ jobs:
       - name: 'Checkout repository'
         uses: actions/checkout@v4
       
-      # - name: 'Install md-to-pdf'
-      #   run: npm install --location=global md-to-pdf
+       - name: 'Install md-to-pdf'
+         run: npm install --location=global md-to-pdf
 
-      # - name: 'Convert markdown to HTML'
-      #   run: cat ./prod-as-built.md | md-to-pdf --config-file ./md2pdf/htmlconfig.json --as-html > ./prod-as-built.html
+       - name: 'Convert markdown to HTML'
+         run: cat ./prod-as-built.md | md-to-pdf --config-file ./md2pdf/htmlconfig.json --as-html > ./prod-as-built.html
       
-      # - name: 'Upload HTML Artifact'
-      #   uses: actions/upload-artifact@v4
-      #   with:
-      #     name: prod-as-built.html
-      #     path: ./prod-as-built.html
+       - name: 'Upload HTML Artifact'
+         uses: actions/upload-artifact@v4
+         with:
+           name: prod-as-built.html
+           path: ./prod-as-built.html
